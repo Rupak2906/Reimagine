@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Fraud Shield - AI Credit Card Protection",
+  "version": "1.0.0",
+  "description": "Protects your credit cards using behavioral biometrics and website reputation",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/tracker.js", "content/content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/build/index.html",
+    "default_title": "Fraud Shield"
+  }
+}

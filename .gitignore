@@ -73,3 +73,9 @@ htmlcov/
 
 # Documentation
 docs/_build/
+
+# Frontend extension files to ignore
+frontend/extension/popup/node_modules/
+frontend/extension/popup/build/
+frontend/extension/popup/package-lock.json
+*.log
