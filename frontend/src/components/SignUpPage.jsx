@@ -27,8 +27,8 @@ function typingSpeed(totalKeystrokes, durationMs) {
   return totalKeystrokes / Math.max(durationMin, 0.01);
 }
 
-// Map question numbers to dtype values
-const getDtypeForStep = (step, securityStep) => {
+// Map question numbers to qtype values
+const getQtypeForStep = (step, securityStep) => {
   if (step === 2) return 'account'; // Username/password step
   if (step === 3) {
     switch(securityStep) {
@@ -182,13 +182,26 @@ export default function SignUpPage({ onSignUpComplete, onBackToLogin }) {
   // Collect behavioral data for a step (store it, don't save yet)
   const collectBehavioralDataForStep = async () => {
     try {
-      const dtype = getDtypeForStep(step, securityStep);
-      if (!dtype) {
-        console.log('⚠️ No dtype mapping for step', step, 'securityStep', securityStep);
-        return; // Skip if no dtype mapping
+      const qtype = getQtypeForStep(step, securityStep);
+      if (!qtype) {
+        console.log('⚠️ No qtype mapping for step', step, 'securityStep', securityStep);
+        return; // Skip if no qtype mapping
       }
 
-      console.log(`📊 Collecting behavioral data for dtype: ${dtype} (step ${step}, securityStep ${securityStep})`);
+      // Get the answer for this step
+      let answer = '';
+      if (step === 2) {
+        // Username/password step - store username (not storing password for security)
+        answer = formData.username || '';
+      } else if (step === 3) {
+        // Security question step - get the answer for the current question
+        const answerKey = `securityQ${securityStep}`;
+        answer = formData[answerKey] || '';
+      }
+      
+      console.log(`📝 Captured answer for ${qtype}:`, answer);
+
+      console.log(`📊 Collecting behavioral data for qtype: ${qtype} (step ${step}, securityStep ${securityStep})`);
       const data = await collectMHacksData();
       console.log(`📊 Collected data sample:`, {
         totalKeystrokes: trackingState.current.totalKeystrokes,
@@ -198,8 +211,9 @@ export default function SignUpPage({ onSignUpComplete, onBackToLogin }) {
       });
       
       const record = {
-        dtype: dtype,
+        qtype: qtype,
         questionNumber: step === 2 ? null : securityStep,
+        answer: answer,
         session_id: data.session_id,
         user_id: null,
         dwell_time_mean_ms: data.dwell_time_mean_ms,
@@ -232,7 +246,7 @@ export default function SignUpPage({ onSignUpComplete, onBackToLogin }) {
       };
 
       collectedBehavioralData.current.push(record);
-      console.log(`✅ Behavioral data collected and stored for dtype: ${dtype}`);
+      console.log(`✅ Behavioral data collected and stored for qtype: ${qtype}`);
       console.log(`📦 Total records collected so far: ${collectedBehavioralData.current.length}`);
 
       resetTrackingState();
@@ -249,46 +263,68 @@ export default function SignUpPage({ onSignUpComplete, onBackToLogin }) {
     }
 
     try {
+      // Helper function to convert NaN/Infinity to null for numeric fields
+      const sanitizeNumeric = (value) => {
+        if (value === null || value === undefined) return null;
+        if (typeof value === 'number' && (isNaN(value) || !isFinite(value))) return null;
+        return value;
+      };
+
       const recordsToSave = collectedBehavioralData.current.map(record => ({
         username: username,
-        dtype: record.dtype,
-        session_id: record.session_id,
-        user_id: record.user_id,
-        dwell_time_mean_ms: record.dwell_time_mean_ms,
-        dwell_time_std_ms: record.dwell_time_std_ms,
-        flight_time_mean_ms: record.flight_time_mean_ms,
-        typing_speed_cpm: record.typing_speed_cpm,
-        backspace_rate: record.backspace_rate,
-        copy_paste_used: record.copy_paste_used,
-        avg_velocity_px_ms: record.avg_velocity_px_ms,
-        path_curvature_ratio: record.path_curvature_ratio,
-        click_precision_px: record.click_precision_px,
-        micro_corrections_per_movement: record.micro_corrections_per_movement,
-        total_distance_px: record.total_distance_px,
-        mouse_idle_time_ms: record.mouse_idle_time_ms,
-        scroll_velocity_px_s: record.scroll_velocity_px_s,
-        fingerprint_hash: record.fingerprint_hash,
-        device_browser_id: record.device_browser_id,
-        device_os: record.device_os,
-        screen_resolution: record.screen_resolution,
-        timezone: record.timezone,
-        gpu: record.gpu,
-        ip_address: record.ip_address,
-        is_datacenter: record.is_datacenter,
-        country_code: record.country_code,
-        form_completion_time_ms: record.form_completion_time_ms,
-        time_to_first_interaction_ms: record.time_to_first_interaction_ms,
-        idle_time_percentage: record.idle_time_percentage,
-        user_agent: record.user_agent,
-        raw_json: record.raw_json
+        qtype: record.qtype,
+        answers: record.answer || '',
+        session_id: record.session_id || null,
+        dwell_time_mean_ms: sanitizeNumeric(record.dwell_time_mean_ms),
+        dwell_time_std_ms: sanitizeNumeric(record.dwell_time_std_ms),
+        flight_time_mean_ms: sanitizeNumeric(record.flight_time_mean_ms),
+        typing_speed_cpm: sanitizeNumeric(record.typing_speed_cpm),
+        backspace_rate: sanitizeNumeric(record.backspace_rate),
+        copy_paste_used: record.copy_paste_used || false,
+        avg_velocity_px_ms: sanitizeNumeric(record.avg_velocity_px_ms),
+        path_curvature_ratio: sanitizeNumeric(record.path_curvature_ratio),
+        click_precision_px: sanitizeNumeric(record.click_precision_px),
+        micro_corrections_per_movement: sanitizeNumeric(record.micro_corrections_per_movement),
+        total_distance_px: sanitizeNumeric(record.total_distance_px),
+        mouse_idle_time_ms: sanitizeNumeric(record.mouse_idle_time_ms),
+        scroll_velocity_px_s: sanitizeNumeric(record.scroll_velocity_px_s),
+        fingerprint_hash: record.fingerprint_hash || null,
+        device_browser_id: record.device_browser_id || null,
+        device_os: record.device_os || null,
+        screen_resolution: record.screen_resolution || null,
+        timezone: record.timezone || null,
+        gpu: record.gpu || null,
+        ip_address: record.ip_address || null,
+        is_datacenter: record.is_datacenter ?? null,
+        country_code: record.country_code || null,
+        form_completion_time_ms: sanitizeNumeric(record.form_completion_time_ms),
+        time_to_first_interaction_ms: sanitizeNumeric(record.time_to_first_interaction_ms),
+        idle_time_percentage: sanitizeNumeric(record.idle_time_percentage),
+        user_agent: record.user_agent || null,
+        raw_json: record.raw_json || null
       }));
+
+      console.log('📤 Attempting to save', recordsToSave.length, 'records to mhacksdata');
+      console.log('📤 First record preview:', {
+        username: recordsToSave[0]?.username,
+        qtype: recordsToSave[0]?.qtype,
+        answers: recordsToSave[0]?.answers,
+        session_id: recordsToSave[0]?.session_id,
+        has_raw_json: !!recordsToSave[0]?.raw_json
+      });
 
       const { data, error } = await supabase
         .from('mhacksdata')
         .insert(recordsToSave);
 
       if (error) {
-        console.error('Error saving behavioral data:', error);
+        console.error('❌ Error saving behavioral data:', error);
+        console.error('❌ Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         throw error;
       } else {
         console.log(`✅ Saved ${recordsToSave.length} behavioral data records to mhacksdata`);
