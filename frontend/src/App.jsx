@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import SignUpPage from './components/SignUpPage';
-import { Shield, TrendingUp, CreditCard, Lock, User, Bell, Home, Wallet, Car, Briefcase, Building2, Gift, LogOut, Database, Plus } from 'lucide-react';
+import { Shield, TrendingUp, CreditCard, Lock, User, Bell, Home, Wallet, Car, Briefcase, Building2, Gift, LogOut, Database, Plus, AlertCircle } from 'lucide-react';
+import { supabase } from './lib/supabase';
 
 export default function CapitolZeroApp() {
   const [currentView, setCurrentView] = useState('landing'); // landing, signup, login, dashboard, data
@@ -11,15 +12,72 @@ export default function CapitolZeroApp() {
     password: '',
     rememberMe: false
   });
+  const [loginError, setLoginError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // Check for saved user session on mount
+  useEffect(() => {
+    const savedUserData = localStorage.getItem('userData');
+    if (savedUserData) {
+      try {
+        const user = JSON.parse(savedUserData);
+        setUserData(user);
+        setCurrentView('dashboard');
+      } catch (err) {
+        console.error('Error loading saved user data:', err);
+        localStorage.removeItem('userData');
+      }
+    }
+  }, []);
 
   const handleInputChange = (field) => (e) => {
     setFormData(prev => ({ ...prev, [field]: e.target.value }));
+    setLoginError('');
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    console.log('🔐 Switching to DYNAMIC model - continuous monitoring active');
-    setCurrentView('dashboard');
+    setLoginError('');
+    setIsLoading(true);
+
+    try {
+      // Query the madhacks table to check if username and password match
+      const { data, error } = await supabase
+        .from('madhacks')
+        .select('*')
+        .eq('username', formData.username)
+        .eq('passwd', formData.password)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          setLoginError('Invalid username or password');
+        } else {
+          setLoginError('Login failed. Please try again.');
+          console.error('Login error:', error);
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      if (data) {
+        console.log('✅ Login successful:', data);
+        setUserData(data);
+        setCurrentView('dashboard');
+        
+        if (formData.rememberMe) {
+          localStorage.setItem('userData', JSON.stringify(data));
+        }
+      } else {
+        setLoginError('Invalid username or password');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setLoginError('An error occurred. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSignUpComplete = (newUserData) => {
@@ -30,6 +88,8 @@ export default function CapitolZeroApp() {
 
   const handleLogout = () => {
     setFormData({ username: '', password: '', rememberMe: false });
+    setUserData(null);
+    localStorage.removeItem('userData');
     setCurrentView('landing');
     setCurrentSection('accounts');
   };
@@ -101,6 +161,13 @@ export default function CapitolZeroApp() {
             </p>
             
             <form onSubmit={handleLogin}>
+              {loginError && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                  <p className="text-sm text-red-700">{loginError}</p>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Username</label>
@@ -110,8 +177,10 @@ export default function CapitolZeroApp() {
                       type="text"
                       value={formData.username}
                       onChange={handleInputChange('username')}
-                      className="w-full pl-12 pr-12 py-3 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      className="w-full pl-12 pr-12 py-3 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none disabled:bg-slate-100 disabled:cursor-not-allowed"
                       placeholder="Enter your username"
+                      required
+                      disabled={isLoading}
                     />
                     <div className="absolute right-4 top-1/2 -translate-y-1/2">
                       <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center">
@@ -129,8 +198,10 @@ export default function CapitolZeroApp() {
                       type="password"
                       value={formData.password}
                       onChange={handleInputChange('password')}
-                      className="w-full pl-12 pr-12 py-3 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                      className="w-full pl-12 pr-12 py-3 border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:outline-none disabled:bg-slate-100 disabled:cursor-not-allowed"
                       placeholder="Enter your password"
+                      required
+                      disabled={isLoading}
                     />
                     <div className="absolute right-4 top-1/2 -translate-y-1/2">
                       <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center">
@@ -149,6 +220,7 @@ export default function CapitolZeroApp() {
                     checked={formData.rememberMe}
                     onChange={(e) => setFormData(prev => ({ ...prev, rememberMe: e.target.checked }))}
                     className="w-4 h-4 text-blue-600 border-slate-300 rounded"
+                    disabled={isLoading}
                   />
                   <label htmlFor="remember" className="text-sm text-slate-700">Remember me</label>
                 </div>
@@ -160,9 +232,20 @@ export default function CapitolZeroApp() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <button
                   type="submit"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg"
+                  disabled={isLoading}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg flex items-center justify-center gap-2"
                 >
-                  Sign in
+                  {isLoading ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Signing in...
+                    </>
+                  ) : (
+                    'Sign in'
+                  )}
                 </button>
                 <button
                   type="button"
@@ -204,19 +287,29 @@ export default function CapitolZeroApp() {
               <button className="p-2 hover:bg-slate-100 rounded-full">
                 <Bell className="w-5 h-5 text-slate-600" />
               </button>
-              <div className="relative group">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center cursor-pointer">
+              <div className="relative">
+                <div 
+                  className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center cursor-pointer"
+                  onMouseEnter={() => setShowUserMenu(true)}
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                >
                   <span className="text-white font-semibold text-sm">JD</span>
                 </div>
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 hidden group-hover:block">
-                  <button 
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium"
+                {showUserMenu && (
+                  <div 
+                    className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50"
+                    onMouseEnter={() => setShowUserMenu(true)}
+                    onMouseLeave={() => setShowUserMenu(false)}
                   >
-                    <LogOut className="w-4 h-4" />
-                    Sign Out
-                  </button>
-                </div>
+                    <button 
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-4 py-3 hover:bg-slate-50 text-slate-700 font-medium text-left"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sign Out
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
